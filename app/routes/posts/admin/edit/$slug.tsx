@@ -53,7 +53,7 @@ export const action = async ({ request }: ActionArgs) => {
   return handlePostUpdate(formData);
 };
 
-export default function editPage() {
+export default function EditPage() {
   const { post } = useLoaderData<typeof loader>();
   const navigation = useNavigation();
   return (
