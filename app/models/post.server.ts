@@ -10,6 +10,10 @@ const configuration = new Configuration({
 });
 const openai = new OpenAIApi(configuration);
 
+const isDev = process.env.NODE_ENV === "development";
+
+const fileRoot = isDev ? "public" : "data";
+
 const getLastDay = () => {
   let lastDay = Date.now() - 24 * 60 * 60 * 1000;
   return new Date(lastDay).toISOString();
@@ -172,14 +176,22 @@ export async function generatePostImage(slug: string, prompt = "") {
     await handleFileTransfer(imageUrl, slug);
     return prisma.post.update({
       where: { slug },
-      data: { image: `/images/${slug}.png` },
+      data: { image: `/data/images/${slug}.png` },
     });
   }
 }
 
 const handleFileTransfer = async (imageUrl: string, slug: string) => {
   return new Promise((resolve, reject) => {
-    const path = `public/images/${slug}.png`;
+    const dir = `${fileRoot}/images`;
+    const path = `${dir}/${slug}.png`;
+    // check if directory exists
+    if (!fs.existsSync(dir)) {
+      console.log("Directory does not exist");
+      // create directory
+      fs.mkdirSync(dir);
+      console.log("Directory created");
+    }
     // check if file exists
     if (fs.existsSync(path)) {
       console.log("File already exists");
@@ -187,7 +199,7 @@ const handleFileTransfer = async (imageUrl: string, slug: string) => {
       fs.unlinkSync(path);
       console.log("File deleted");
     }
-    const imageFile = fs.createWriteStream(`public/images/${slug}.png`);
+    const imageFile = fs.createWriteStream(path);
     http.get(imageUrl, (response) => {
       response.pipe(imageFile);
     });
