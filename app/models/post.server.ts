@@ -1,9 +1,16 @@
 import { prisma } from "~/db.server";
 import type { Post } from "@prisma/client";
 import fs from "fs";
-
+const cloudinary = require("cloudinary").v2;
 import { Configuration, OpenAIApi } from "openai";
 import http from "http";
+
+cloudinary.config({
+  secure: true,
+  cloud_name: process.env.CLOUDINARY_NAME,
+  api_key: process.env.CLOUDINARY_KEY,
+  api_secret: process.env.CLOUDINARY_SECRET,
+});
 
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_KEY,
@@ -13,11 +20,6 @@ const openai = new OpenAIApi(configuration);
 const isDev = process.env.NODE_ENV === "development";
 
 const fileRoot = isDev ? "public" : "data";
-
-const getLastDay = () => {
-  let lastDay = Date.now() - 24 * 60 * 60 * 1000;
-  return new Date(lastDay).toISOString();
-};
 
 export async function getPosts(sort: string = "new") {
   const sortKey: any = {
@@ -173,44 +175,14 @@ export async function generatePostImage(slug: string, prompt = "") {
   const imageUrl = response.data[0].url;
   // download image from url
   if (imageUrl) {
-    await handleFileTransfer(imageUrl, slug);
+    const url = await uploadImage(imageUrl, slug);
+    // set post image to the image url
     return prisma.post.update({
       where: { slug },
-      data: { image: `/data/images/${slug}.png` },
+      data: { image: url },
     });
   }
 }
-
-const handleFileTransfer = async (imageUrl: string, slug: string) => {
-  return new Promise((resolve, reject) => {
-    const dir = `${fileRoot}/images`;
-    const path = `${dir}/${slug}.png`;
-    // check if directory exists
-    if (!fs.existsSync(dir)) {
-      console.log("Directory does not exist");
-      // create directory
-      fs.mkdirSync(dir);
-      console.log("Directory created");
-    }
-    // check if file exists
-    if (fs.existsSync(path)) {
-      console.log("File already exists");
-      // delete file
-      fs.unlinkSync(path);
-      console.log("File deleted");
-    }
-    const imageFile = fs.createWriteStream(path);
-    http.get(imageUrl, (response) => {
-      response.pipe(imageFile);
-    });
-    // after download completed close filestream
-    imageFile.on("finish", () => {
-      imageFile.close();
-      console.log("Download Completed");
-      resolve(true);
-    });
-  });
-};
 
 export async function deletePosts() {
   return prisma.post.deleteMany();
@@ -240,3 +212,22 @@ export async function setFeaturedPost(slug: string) {
     data: { featured: true },
   });
 }
+
+const uploadImage = async (imagePath: string, filename: string) => {
+  // Use the uploaded file's name as the asset's public ID and
+  // allow overwriting the asset with new versions
+  const options = {
+    public_id: `turinger/${filename}`,
+    unique_filename: false,
+    overwrite: true,
+  };
+
+  try {
+    // Upload the image
+    const result = await cloudinary.uploader.upload(imagePath, options);
+    console.log(result);
+    return result.secure_url;
+  } catch (error) {
+    console.error(error);
+  }
+};
