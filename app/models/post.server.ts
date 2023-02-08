@@ -1,8 +1,6 @@
 import { prisma } from "~/db.server";
 import type { Post } from "@prisma/client";
-import fs from "fs";
 import { Configuration, OpenAIApi } from "openai";
-import http from "http";
 const cloudinary = require("cloudinary").v2;
 
 cloudinary.config({
@@ -16,10 +14,6 @@ const configuration = new Configuration({
   apiKey: process.env.OPENAI_KEY,
 });
 const openai = new OpenAIApi(configuration);
-
-const isDev = process.env.NODE_ENV === "development";
-
-const fileRoot = isDev ? "public" : "data";
 
 export async function getPosts(sort: string = "new") {
   const sortKey: any = {
@@ -162,6 +156,7 @@ export async function generatePostImage(slug: string, prompt = "") {
   if (!post) return null;
   const fallbackPrompt = `Style: Knolling still-life photograph of everyday objects; Colors: vibrant, pastel, FF6666; Theme: ${post.title} ${post.dropHead}`;
   // call image generation api
+  console.log("prompting model");
   const { data: response } = await openai.createImage({
     prompt: `${
       prompt || post.imageDescription || fallbackPrompt
@@ -170,12 +165,14 @@ export async function generatePostImage(slug: string, prompt = "") {
     size: "1024x1024",
   });
   if (!response.data?.length) return null;
+  console.log("model responded");
 
   // save the image to the public images folder
   const imageUrl = response.data[0].url;
   // download image from url
   if (imageUrl) {
     const url = await uploadImage(imageUrl, slug);
+    console.log("image uploaded");
     // set post image to the image url
     return prisma.post.update({
       where: { slug },
