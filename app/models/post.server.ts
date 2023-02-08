@@ -1,9 +1,9 @@
 import { prisma } from "~/db.server";
 import type { Post } from "@prisma/client";
 import fs from "fs";
-const cloudinary = require("cloudinary").v2;
 import { Configuration, OpenAIApi } from "openai";
 import http from "http";
+const cloudinary = require("cloudinary").v2;
 
 cloudinary.config({
   secure: true,
