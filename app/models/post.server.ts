@@ -154,12 +154,11 @@ export async function generatePostImage(slug: string, prompt = "") {
   // get the post from the db
   const post = await prisma.post.findUnique({ where: { slug } });
   if (!post) return null;
-  const fallbackPrompt = `Style: Knolling still-life photograph of everyday objects; Colors: vibrant, pastel, FF6666; Theme: ${post.title} ${post.dropHead}`;
   // call image generation api
   console.log("prompting model");
   const { data: response } = await openai.createImage({
     prompt: `${
-      prompt || post.imageDescription || fallbackPrompt
+      prompt || post.imageDescription
     } - in the style of 3D art, colorful background`,
     n: 1,
     size: "1024x1024",
@@ -186,6 +185,7 @@ export async function deletePosts() {
 }
 
 export async function deletePost(slug: string) {
+  await cloudinary.uploader.destroy(`turinger/${slug}`);
   return prisma.post.delete({ where: { slug } });
 }
 
