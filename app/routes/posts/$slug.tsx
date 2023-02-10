@@ -1,4 +1,4 @@
-import type { LoaderArgs } from "@remix-run/node";
+import { LoaderArgs, redirect } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Link, useLoaderData } from "@remix-run/react";
 import { marked } from "marked";
@@ -15,7 +15,9 @@ export const loader = async ({ params, request }: LoaderArgs) => {
   logView(params.slug, request);
 
   const post = await getPost(params.slug);
-  invariant(post, `Post not found: ${params.slug}`);
+  if (!post) {
+    return redirect("/posts");
+  }
 
   const html = post.markdown ? marked(post.markdown) : "";
   return json({ post, html });

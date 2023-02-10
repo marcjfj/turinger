@@ -1,24 +1,29 @@
 import invariant from "tiny-invariant";
 import {
+  deletePost,
   generatePostBody,
   generatePostImage,
   getPost,
   setFeaturedPost,
   updatePost,
 } from "~/models/post.server";
-import type { LoaderArgs, ActionArgs, Request } from "@remix-run/node";
+import { LoaderArgs, ActionArgs, Request, redirect } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { useLoaderData, useTransition } from "@remix-run/react";
 import { Form } from "@remix-run/react";
-import { useNavigation } from "@remix-run/react";
 import { requireAdmin } from "~/session.server";
+import Logo from "~/components/logo";
+import { useEffect, useMemo } from "react";
 
 export const loader = async ({ params, request }: LoaderArgs) => {
   await requireAdmin(request, "/");
 
   invariant(params.slug, `params.slug is required`);
   const post = await getPost(params.slug);
-  invariant(post, `Post not found: ${params.slug}`);
+  if (!post) {
+    return redirect("/posts/admin");
+  }
+
   return json({ post });
 };
 
@@ -39,26 +44,48 @@ export const action = async ({ request }: ActionArgs) => {
   await requireAdmin(request, "/");
   // get formDate
   const formData = await request.formData();
-  if (formData.get("action") === "generate-body") {
-    console.log("generate body");
-    return generatePostBody(formData.get("slug") as string);
-  } else if (formData.get("action") === "generate-image") {
-    console.log("generate image");
-    return generatePostImage(formData.get("slug") as string);
-  } else if (formData.get("action") === "set-featured") {
-    console.log("set featured");
-    return setFeaturedPost(formData.get("slug") as string);
+  const slug = formData.get("slug") as string;
+
+  switch (formData.get("action")) {
+    case "generate-body":
+      console.log("generate body");
+      return generatePostBody(slug);
+    case "generate-image":
+      console.log("generate image");
+      return generatePostImage(slug);
+    case "set-featured":
+      console.log("set featured");
+      return setFeaturedPost(slug);
+    case "delete-post":
+      console.log("delete post");
+      return deletePost(slug);
   }
+
   // get title, slug, body from request body
   return handlePostUpdate(formData);
 };
 
 export default function EditPage() {
   const { post } = useLoaderData<typeof loader>();
-  const navigation = useNavigation();
+  const transition = useTransition();
+
+  const loadingImage = useMemo(() => {
+    return (
+      transition.submission?.formData.get("action") === "generate-image" &&
+      ["submitting", "loading"].includes(transition.state)
+    );
+  }, [transition.state, transition.submission]);
+
+  const loadingBody = useMemo(() => {
+    return (
+      transition.submission?.formData.get("action") === "generate-body" &&
+      ["submitting", "loading"].includes(transition.state)
+    );
+  }, [transition.state, transition.submission]);
+
   return (
     <div className="col-span-3 mx-auto w-full max-w-[800px] py-6">
-      <div className="image-gen mb-6">
+      <div className="flex">
         {!post.featured && (
           <Form className="flex items-center justify-center p-6" method="post">
             <input type="hidden" name="action" value="set-featured" />
@@ -72,7 +99,24 @@ export default function EditPage() {
             </button>
           </Form>
         )}
-
+        {/* Delete post */}
+        <Form
+          method="post"
+          className="flex items-center justify-center p-6"
+          id="delete-post"
+        >
+          <input type="hidden" name="action" value="delete-post" />
+          <input type="hidden" name="slug" value={post.slug} />
+          <button
+            name="delete-post"
+            className="bg-red-500 p-2 px-6 text-white"
+            type="submit"
+          >
+            Delete Post
+          </button>
+        </Form>
+      </div>
+      <div className="image-gen mb-6">
         <Form
           method="post"
           className="flex w-full items-center justify-center border border-slate-200 p-4"
@@ -89,8 +133,7 @@ export default function EditPage() {
           )}
           <input type="hidden" name="action" value="generate-image" />
           <input type="hidden" name="slug" value={post.slug} />
-          {navigation.state !== "loading" &&
-          navigation.state !== "submitting" ? (
+          {!loadingImage ? (
             <button
               type="submit"
               className="mx-auto my-6 border border-blue-500 bg-white p-4 px-6 text-blue-500"
@@ -98,28 +141,8 @@ export default function EditPage() {
               Generate Image
             </button>
           ) : (
-            // Spinner
-            <div className="mx-auto my-6 border border-blue-500 bg-white p-4 px-6">
-              <svg
-                className="-ml-1 mr-3 h-5 w-5 animate-spin text-blue-500"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8v8z"
-                ></path>
-              </svg>
+            <div className="loading">
+              <Logo className="mx-auto h-24 w-24 animate-spin text-soft-orange" />
             </div>
           )}
         </Form>
@@ -186,7 +209,12 @@ export default function EditPage() {
           ></textarea>
         ) : null}
       </Form>
-      {!post.markdown && (
+      {loadingBody && (
+        <div className="loading">
+          <Logo className="mx-auto h-24 w-24 animate-spin text-soft-orange" />
+        </div>
+      )}
+      {!post.markdown && !loadingBody && (
         <Form
           method="post"
           className="flex w-full flex-col items-center border border-slate-200 p-16"
@@ -199,11 +227,11 @@ export default function EditPage() {
             name="generate-body"
             value="generate"
             className={`mx-auto border border-blue-500 bg-white p-4 px-6 ${
-              navigation.state === "loading"
+              transition.state === "loading"
                 ? "bg-blue-500 text-white"
                 : "text-blue-500"
             }`}
-            disabled={navigation.state === "loading"}
+            disabled={transition.state === "loading"}
           >
             Generate Post Body
           </button>
@@ -216,8 +244,8 @@ export default function EditPage() {
           form="edit-form"
           value="edit"
           className={`mr-auto mt-10 bg-green-200 p-2 px-6 text-green-900
-          ${navigation.state === "loading" ? "bg-gray-500 text-white" : ""}}`}
-          disabled={navigation.state === "loading"}
+          ${transition.state === "loading" ? "bg-gray-500 text-white" : ""}}`}
+          disabled={transition.state === "loading"}
         >
           Save
         </button>
